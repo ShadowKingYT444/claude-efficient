@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "claude-efficient"
+version = "0.1.0"
+description = "Token optimization wrapper for Claude Code sessions"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1",
+    "requests>=2.31",
+    "tomllib>=1.0; python_version < '3.11'",
+    "rich>=13.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/thedotmack/claude-efficient"
+Issues   = "https://github.com/thedotmack/claude-efficient/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.4", "pytest-mock>=3.0", "build"]
+
+[project.scripts]
+ce = "claude_efficient.cli.main:cli"
+

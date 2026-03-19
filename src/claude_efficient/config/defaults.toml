@@ -1,0 +1,31 @@
+[general]
+verbose = false
+
+[model]
+default = "claude-sonnet-4-6"
+planning_model = "claude-opus-4-6"
+# ARCHITECTURE RULE: model is selected ONCE at session start, never changed mid-session.
+# Mid-session model changes invalidate the prompt cache prefix entirely.
+auto_route = true
+
+[compact]
+enabled = true
+threshold_pct = 45          # was 60 — context quality degrades non-linearly; act early
+danger_threshold_pct = 70   # was 80
+prefer_clear = true         # /clear + fresh session is preferred; /compact is fallback
+
+[subagents]
+enabled = true
+min_files_to_parallelize = 2
+max_parallel = 4
+
+[mcp]
+auto_prune = false           # disabled — SPEC_09 replaces pruner with env-var approach
+# Servers in always_keep are NEVER disabled regardless of task keywords.
+# claude_mem hooks (SessionStart, PostToolUse, SessionEnd) are passive capture hooks —
+# not user-invoked tools. Disabling the server kills the capture pipeline silently.
+always_keep = ["claude_mem", "memory", "filesystem"]
+
+[prompt]
+auto_optimize = true
+warn_on_paste = true

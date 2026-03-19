@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '=== CRITICAL CONTEXT ===' && cat CLAUDE.md && echo '=== CURRENT TASKS ===' && cat TASKS.md 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
