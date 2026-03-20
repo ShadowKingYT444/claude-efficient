@@ -1,38 +1,63 @@
-# claude-efficient
+<div align="center">
+  <br />
+  <h1>Claude Efficient</h1>
+  <p>
+    <strong>Stop burning Claude Code tokens.</strong>
+  </p>
+  <p>
+    <code>ce</code> wraps every session with automatic optimizations to save you money and improve context quality.
+  </p>
+</div>
 
-> Stop burning Claude Code tokens. `ce` wraps every session with automatic optimizations.
+---
 
-## Install
+## 🚀 Installation
+
+`claude-efficient` is a Python package. Ensure you have Python 3.11+ installed.
+
+```bash
 pip install claude-efficient
+```
 
-## Requires
-- [claude-mem](https://github.com/thedotmack/claude-mem) for cross-session memory
-- Gemini CLI (free) or Ollama (local) for zero-cost init analysis
+This will install the `ce` command-line tool.
 
-## Setup (once per project)
-ce init
-# Generates CLAUDE.md + @import tree, .claudeignore, PreCompact hook
-# Checks cache health, claude-mem status, ENABLE_EXPERIMENTAL_MCP_CLI
+## ✨ Quick Start
 
-## Use
-ce run "Build src/auth.py — JWT validation middleware"
-# Auto-routes to Sonnet, checks cache health, injects claude-mem session brief,
-# advises on MCP overhead, estimates scope
+1.  **Initialize your project:**
+    ```bash
+    ce init
+    ```
+    This command sets up your project with a `CLAUDE.md`, `.claudeignore`, and other necessary configurations for optimal performance.
 
-## Audit past sessions
-ce audit session.log
-# Detects: cache invalidation, large pastes, Opus overuse, bash retries, narration
+2.  **Run a task:**
+    ```bash
+    ce run "Your task description here. For example, build a FastAPI endpoint for user auth."
+    ```
+    This is the main command you'll use. It automatically optimizes your request, manages session context, and routes it appropriately.
 
-## Other commands
-ce mem-search "os_hook implementation"   # inspect prior session context
-ce scope-check "Build X and Y and Z"    # estimate tokens before committing
-ce status                                # project health dashboard
+3.  **Check your savings:**
+    ```bash
+    ce gains
+    ```
+    This command displays a detailed dashboard of your token savings across different operations.
 
-## What it fixes
-| Issue | Fix | Savings |
-|---|---|---|
-| CLAUDE.md bloat | @import tree, 2KB root limit | ~45% |
-| MCP schema overhead | ENABLE_EXPERIMENTAL_MCP_CLI advisory | ~40-105k tokens/session |
-| Model switching | Session-start-only routing | cache preserved |
-| Compaction loss | PreCompact hook + 45% threshold | ~60-70% per compact |
-| Cold starts | claude-mem session brief | replaces TASKS.md paste |
+## 📋 Commands
+
+`claude-efficient` provides a suite of commands to manage your workflow and optimize token usage.
+
+| Command         | Description                                                              |
+| --------------- | ------------------------------------------------------------------------ |
+| `ce init`       | Initializes a new or existing project for use with `claude-efficient`.   |
+| `ce run [TASK]` | Runs a new coding session with the given task, applying optimizations.   |
+| `ce gains`      | Displays the token savings dashboard.                                    |
+| `ce status`     | Shows a health dashboard for the current project configuration.          |
+| `ce audit [LOG]`| Audits a session log to detect inefficiencies and suggest improvements.  |
+| `ce telemetry`  | Shows before/after token savings from recorded sessions.                 |
+| `ce mem-search` | Searches cross-session memory for relevant context from past tasks.      |
+| `ce scope-check`| Estimates the token requirements for a task before running a session.    |
+| `ce helpers`    | Provides assistance with setting up helpers and integrations.            |
+
+---
+<div align="center">
+  <p>Made with ❤️ for efficient coding sessions.</p>
+</div>
