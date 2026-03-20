@@ -57,6 +57,14 @@ def scope_check(task: str, root: str) -> None:
 
 @click.command()
 @click.option("--root", default=".", type=click.Path())
+def telemetry(root: str) -> None:
+    """Show before/after token savings from recorded sessions."""
+    from claude_efficient.analysis.telemetry import summarize
+    click.echo(summarize(Path(root).resolve()))
+
+
+@click.command()
+@click.option("--root", default=".", type=click.Path())
 def status(root: str) -> None:
     """Show project health: cache risks, CLAUDE.md size, claude-mem status."""
     from claude_efficient.analysis.cache_health import CacheHealthMonitor

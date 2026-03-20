@@ -23,4 +23,8 @@ dev = ["pytest>=8.0", "ruff>=0.4", "pytest-mock>=3.0", "build"]
 
 [project.scripts]
 ce = "claude_efficient.cli.main:cli"
-
+ce-codex = "claude_efficient.cli.ce_codex:main"
+ce-gemini = "claude_efficient.cli.ce_gemini:main"
+ce-opencode = "claude_efficient.cli.ce_opencode:main"
+ce-cursor = "claude_efficient.cli.ce_cursor:main"
+ce-router = "claude_efficient.cli.ce_router:main"

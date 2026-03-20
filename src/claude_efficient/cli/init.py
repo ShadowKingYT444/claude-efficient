@@ -2,14 +2,19 @@
 from __future__ import annotations
 
 import shutil
+from functools import partial
 from pathlib import Path
 
 import click
 
 from claude_efficient.analysis.cache_health import CacheHealthMonitor
-from claude_efficient.generators.backends import detect_backend
+from claude_efficient.config.defaults import HelperMode
+from claude_efficient.config.loader import resolve_helpers_config
+from claude_efficient.generators.backends import HelperTask
 from claude_efficient.generators.claude_md import ClaudeMdGenerator, write_claude_settings
 from claude_efficient.generators.claudeignore import ClaudeignoreGenerator
+from claude_efficient.generators.extractor import extract_facts
+from claude_efficient.generators.orchestrator import invoke_helper
 
 
 @click.command()
@@ -17,7 +22,26 @@ from claude_efficient.generators.claudeignore import ClaudeignoreGenerator
 @click.option("--force", is_flag=True, help="Overwrite existing CLAUDE.md")
 @click.option("--reimport", is_flag=True, help="Regenerate @import subdirectory files only")
 @click.option("--no-import-tree", is_flag=True, help="Skip subdirectory @import scaffolding")
-def init(root: str, force: bool, reimport: bool, no_import_tree: bool) -> None:
+@click.option(
+    "--helpers",
+    type=click.Choice(["off", "auto", "force"]),
+    default=None,
+    help="Helper mode override: off | auto | force",
+)
+@click.option(
+    "--helper-backend",
+    type=click.Choice(["auto", "gemini", "ollama", "opencode"]),
+    default=None,
+    help="Helper backend override",
+)
+def init(
+    root: str,
+    force: bool,
+    reimport: bool,
+    no_import_tree: bool,
+    helpers: str | None,
+    helper_backend: str | None,
+) -> None:
     """One-time project setup: CLAUDE.md, .claudeignore, PreCompact hook, cache health check."""
     root_path = Path(root).resolve()
     sep = "─" * 50
@@ -38,26 +62,28 @@ def init(root: str, force: bool, reimport: bool, no_import_tree: bool) -> None:
     if report.is_healthy:
         click.secho("  ✓ No cache risks detected", fg="green")
 
-    # ── 3. Backend detection ────────────────────────────────────────────────
-    click.echo("\n[ce] Detecting analysis backend...")
+    # ── 3. Resolve helper config ────────────────────────────────────────────
     try:
-        backend = detect_backend()
-        click.secho(f"  ✓ {backend.name} selected (analysis cost: $0.00)", fg="green")
-    except RuntimeError as e:
+        mode, backend = resolve_helpers_config(helpers, helper_backend, root_path)
+        click.secho(f"  ✓ Helper: mode={mode.value}, backend={backend.name}", fg="green")
+    except Exception as e:
         click.secho(f"  ERROR: {e}", fg="red")
         raise SystemExit(1)
+
+    def _helper_fn(content: str, task: HelperTask) -> str | None:
+        resp = invoke_helper(task, content, mode=mode, backend=backend)
+        return None if resp.used_fallback else resp.text
 
     # ── 4. CLAUDE.md ────────────────────────────────────────────────────────
     claude_md_path = root_path / "CLAUDE.md"
     gen = ClaudeMdGenerator()
 
     if reimport:
-        # Just regenerate subdirectory imports, don't touch root
         click.echo("\n[ce] Regenerating @import tree...")
-        import_block = gen.generate_import_tree(root_path, backend)
+        facts = extract_facts(root_path)
+        import_block = _build_import_block(root_path, gen, facts, _helper_fn)
         if import_block:
-            existing = claude_md_path.read_text() if claude_md_path.exists() else ""
-            # Replace existing import block or append
+            existing = claude_md_path.read_text(encoding="utf-8") if claude_md_path.exists() else ""
             if "## Subdirectory context" in existing:
                 before = existing.split("## Subdirectory context")[0].rstrip()
                 claude_md_path.write_text(before + import_block, encoding="utf-8")
@@ -65,16 +91,18 @@ def init(root: str, force: bool, reimport: bool, no_import_tree: bool) -> None:
                 claude_md_path.write_text(existing + import_block, encoding="utf-8")
             click.secho("  ✓ @import tree updated", fg="green")
         else:
-            click.echo("  No qualifying subdirectories found (need ≥3 .py files each)")
+            click.echo("  No qualifying subdirectories found")
     elif claude_md_path.exists() and not force:
         click.echo("\n[ce] CLAUDE.md exists — skipping (--force to regenerate, --reimport for imports)")
     else:
         click.echo("\n[ce] Scanning codebase...")
-        content = gen.generate(root_path, backend)
+        facts = extract_facts(root_path)
 
-        # Append @import tree if subdirs qualify
+        invoke_fn = partial(_helper_fn, task=HelperTask.project_digest_root)
+        content = gen.generate_root(facts, invoke_helper_fn=invoke_fn)
+
         if not no_import_tree:
-            import_block = gen.generate_import_tree(root_path, backend)
+            import_block = _build_import_block(root_path, gen, facts, _helper_fn)
             if import_block:
                 content += import_block
                 click.secho("  ✓ @import tree generated for qualifying subdirectories", fg="green")
@@ -98,9 +126,29 @@ def init(root: str, force: bool, reimport: bool, no_import_tree: bool) -> None:
 
     # ── 7. Summary ──────────────────────────────────────────────────────────
     click.echo(f"\n{sep}")
-    click.secho("[ce] Setup complete. Claude Code tokens used: 0", fg="cyan")
+    click.secho("[ce] Setup complete. Claude Code tokens used during init: 0", fg="cyan")
     click.echo("[ce] Next: ce run \"your first task\"")
     click.echo()
+
+
+def _build_import_block(
+    root_path: Path,
+    gen: ClaudeMdGenerator,
+    facts,
+    helper_fn,
+) -> str:
+    qualifying = [c for c in facts.subdir_candidates if c.qualifies]
+    if not qualifying:
+        return ""
+    import_lines = ["\n## Subdirectory context (auto-loaded by Claude Code)", ""]
+    for candidate in qualifying[:5]:
+        subdir_path = root_path / candidate.path
+        subdir_path.mkdir(parents=True, exist_ok=True)
+        invoke_fn = partial(helper_fn, task=HelperTask.project_digest_subdir)
+        content = gen.generate_subdir(candidate, invoke_helper_fn=invoke_fn)
+        (subdir_path / "CLAUDE.md").write_text(content, encoding="utf-8")
+        import_lines.append(f"@{candidate.path}/CLAUDE.md")
+    return "\n".join(import_lines)
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────
@@ -117,7 +165,6 @@ def _check_claude_mem() -> None:
     except Exception:
         pass
 
-    # Check if it's installed at all
     has_binary = shutil.which("claude-mem") is not None
     if has_binary:
         click.secho("  ⚠ claude-mem installed but worker not running on :37777", fg="yellow")

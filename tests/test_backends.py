@@ -1,5 +1,5 @@
 from unittest.mock import patch
-from claude_efficient.generators.backends import detect_backend, GeminiBackend, OllamaBackend
+from claude_efficient.generators._legacy import detect_backend, GeminiBackend, OllamaBackend
 
 
 def test_detect_backend_picks_gemini_first():
