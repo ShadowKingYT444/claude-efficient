@@ -69,7 +69,6 @@ pip install -e .
 | `ce gains`      | Displays the token savings dashboard.                                    |
 | `ce status`     | Shows a health dashboard for the current project configuration.          |
 | `ce audit [LOG]`| Audits a session log to detect inefficiencies and suggest improvements.  |
-| `ce telemetry`  | Shows before/after token savings from recorded sessions.                 |
 | `ce mem-search` | Searches cross-session memory for relevant context from past tasks.      |
 | `ce scope-check`| Estimates the token requirements for a task before running a session.    |
 | `ce helpers`    | Provides assistance with setting up helpers and integrations.            |
