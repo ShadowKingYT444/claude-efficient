@@ -36,14 +36,31 @@ class SavingsVerification:
     failing_session_indexes: list[int]
 
 
+def get_global_telemetry_path() -> Path:
+    p = Path.home() / ".ce-telemetry.jsonl"
+    return p
+
 def record(path: Path, rec: TelemetryRecord) -> None:
-    """Append one record to <path>/.ce-telemetry.jsonl."""
-    with open(path / _TELEMETRY_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(asdict(rec)) + "\n")
+    """Append one record to <path>/.ce-telemetry.jsonl and globally."""
+    line = json.dumps(asdict(rec)) + "\n"
+    # Write local
+    try:
+        with open(path / _TELEMETRY_FILE, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+    # Write global
+    try:
+        with open(get_global_telemetry_path(), "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
 
-
-def load(path: Path) -> list[TelemetryRecord]:
-    tel = path / _TELEMETRY_FILE
+def load(path: Path | None = None) -> list[TelemetryRecord]:
+    if path is None:
+        tel = get_global_telemetry_path()
+    else:
+        tel = path / _TELEMETRY_FILE
     if not tel.exists():
         return []
     records: list[TelemetryRecord] = []
@@ -124,7 +141,7 @@ def verify_min_session_savings(
 def summarize(path: Path) -> str:
     records = load(path)
     if not records:
-        return "No telemetry yet. Run `ce run --telemetry` to start collecting."
+        return "No telemetry yet. Run `ce run` to start collecting."
 
     n = len(records)
     total_chars_saved = sum(r.chars_saved for r in records)

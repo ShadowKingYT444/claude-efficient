@@ -38,6 +38,7 @@ class SubdirCandidate:
     language: str
     file_count: int
     qualifies: bool
+    files: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -59,6 +60,26 @@ def extract_facts(project_root: Path) -> ExtractedFacts:
     )
 
 
+def _get_file_desc(path: Path) -> str:
+    try:
+        content = path.read_text(encoding="utf-8", errors="ignore")
+        for line in content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith(('"""', "'''")):
+                return line.strip(" \"'")[:100]
+            if line.startswith(("#", "//", "/*", "*", "<!--")):
+                cleaned = line.lstrip("#/ *<!-").strip()
+                if cleaned:
+                    return cleaned[:100]
+            if not line.startswith(("import ", "from ", "package ", "use ")):
+                break
+    except Exception:
+        pass
+    return ""
+
+
 def _scan_tree(root: Path, max_entries: int = 15) -> list[str]:
     entries: list[str] = []
     try:
@@ -66,7 +87,11 @@ def _scan_tree(root: Path, max_entries: int = 15) -> list[str]:
             if entry.name in ALWAYS_SKIP or entry.name.startswith("."):
                 continue
             rel = entry.relative_to(root)
-            entries.append(f"{rel}/" if entry.is_dir() else str(rel))
+            if entry.is_dir():
+                entries.append(f"{rel}/")
+            else:
+                desc = _get_file_desc(entry)
+                entries.append(f"{rel} - {desc}" if desc else str(rel))
             if len(entries) >= max_entries:
                 break
     except (PermissionError, OSError):
@@ -113,9 +138,14 @@ def _find_subdir_candidates(root: Path) -> list[SubdirCandidate]:
     for subdir in subdirs:
         for lang, exts in LANGUAGE_EXTENSIONS.items():
             count = 0
+            files_desc: dict[str, str] = {}
             for ext in exts:
                 try:
-                    count += sum(1 for _ in subdir.glob(f"*{ext}"))
+                    for f in subdir.glob(f"*{ext}"):
+                        count += 1
+                        if len(files_desc) < 20:  # limit to 20 files per subdir context
+                            desc = _get_file_desc(f)
+                            files_desc[f.name] = desc
                 except (PermissionError, OSError):
                     pass
             if count > 0:
@@ -124,6 +154,7 @@ def _find_subdir_candidates(root: Path) -> list[SubdirCandidate]:
                     language=lang,
                     file_count=count,
                     qualifies=count >= QUALIFY_THRESHOLDS[lang],
+                    files=files_desc,
                 ))
     return candidates
 

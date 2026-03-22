@@ -56,7 +56,7 @@ pip install -e .
     ```bash
     ce gains
     ```
-    This command displays a detailed dashboard of your token savings across different operations.
+    This command displays a detailed dashboard of your token savings across different operations. Token savings are tracked automatically and stored globally (`~/.ce-telemetry.jsonl`), allowing you to view your total savings across all projects.
 
 ## 📋 Commands
 

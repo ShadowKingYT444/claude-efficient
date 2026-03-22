@@ -116,15 +116,20 @@ def _deterministic_root(facts: ExtractedFacts) -> str:
 
 
 def _deterministic_subdir(candidate: SubdirCandidate) -> str:
-    return (
-        f"# {candidate.path}\n\n"
+    lines = [
+        f"# {candidate.path}\n",
         f"{candidate.language} subdir with {candidate.file_count} source files."
-    )
+    ]
+    if candidate.files:
+        lines.append("\n## Key Files")
+        for f, desc in candidate.files.items():
+            lines.append(f"- {f}: {desc}" if desc else f"- {f}")
+    return "\n".join(lines)
 
 
 class ClaudeMdGenerator:
-    MAX_BYTES = 2_000
-    SUBDIR_MAX_BYTES = 600
+    MAX_BYTES = 8_000
+    SUBDIR_MAX_BYTES = 4_000
 
     def generate_root(
         self,
@@ -140,7 +145,14 @@ class ClaudeMdGenerator:
         """
         result: str | None = None
         if invoke_helper_fn is not None:
-            result = invoke_helper_fn(_serialize_facts(facts))
+            prompt = (
+                "You are generating a CLAUDE.md file for an AI coding assistant. "
+                "Output ONLY valid Markdown (no JSON/YAML wrappers). Include the project structure, languages, commands, "
+                "and briefly describe the purpose of each key file based on the provided names/descriptions.\n\n"
+                "## Extracted Facts:\n"
+                + _serialize_facts(facts)
+            )
+            result = invoke_helper_fn(prompt)
         if result is None:
             result = _deterministic_root(facts)
         if len(result.encode()) > self.MAX_BYTES:
@@ -158,9 +170,12 @@ class ClaudeMdGenerator:
         invoke_helper_fn returns None to signal fallback.
         """
         content_input = (
+            "You are generating a subdir-level CLAUDE.md file for an AI assistant. "
+            "Output ONLY valid Markdown (no JSON/YAML wrappers). List the files and briefly describe what this subdirectory and its files are responsible for.\n\n"
             f"SUBDIR: {candidate.path}\n"
             f"LANGUAGE: {candidate.language}\n"
-            f"FILES: {candidate.file_count}"
+            f"FILES: {candidate.file_count}\n"
+            f"DESCRIPTIONS:\n" + "\n".join(f"  {f}: {d}" if d else f"  {f}" for f, d in candidate.files.items())
         )
         result: str | None = None
         if invoke_helper_fn is not None:
@@ -180,6 +195,11 @@ class ClaudeMdGenerator:
     def write_gemini_md(self, root: Path, content: str) -> Path:
         out = root / "GEMINI.md"
         out.write_text(content.replace("CLAUDE.md", "GEMINI.md"), encoding="utf-8")
+        return out
+
+    def write_agents_md(self, root: Path, content: str) -> Path:
+        out = root / "AGENTS.md"
+        out.write_text(content.replace("CLAUDE.md", "AGENTS.md"), encoding="utf-8")
         return out
 
     def _trim(self, content: str) -> str:

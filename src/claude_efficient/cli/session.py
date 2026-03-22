@@ -49,11 +49,6 @@ def _session_env() -> dict[str, str]:
     help="Single-turn pipe mode (no session cache). Default is interactive.",
 )
 @click.option(
-    "--telemetry",
-    is_flag=True,
-    help="Log before/after token counts to .ce-telemetry.jsonl (pipe mode: parses API usage).",
-)
-@click.option(
     "--helpers",
     type=click.Choice(["off", "auto", "force"]),
     default=None,
@@ -73,7 +68,6 @@ def run(
     dry_run: bool,
     interactive: bool,
     pipe: bool,
-    telemetry: bool,
     helpers: str | None,
     helper_backend: str | None,
 ) -> None:
@@ -213,7 +207,7 @@ def run(
     mode_label = "pipe" if pipe else "interactive"
     click.secho(f"\n[ce] Running on {chosen_model} ({mode_label})...\n", fg="cyan")
 
-    if pipe and telemetry:
+    if pipe:
         tel_cmd = cmd + ["--output-format", "json"]
         t0 = time.monotonic()
         proc = subprocess.run(
@@ -252,7 +246,7 @@ def run(
             duration=duration,
         )
 
-    elif telemetry:
+    else:
         t0 = time.monotonic()
         subprocess.run(cmd, cwd=root_path, env=env, shell=(sys.platform == "win32"))
         duration = time.monotonic() - t0
@@ -263,14 +257,6 @@ def run(
             mode="interactive",
             model=chosen_model,
             duration=duration,
-        )
-
-    else:
-        subprocess.run(
-            cmd,
-            cwd=root_path,
-            env=env,
-            shell=(sys.platform == "win32"),
         )
 
 

@@ -1,35 +1,88 @@
 import click
 from rich.console import Console
 from rich.table import Table
+from claude_efficient.analysis.telemetry import load
 
 @click.command("gains")
 def gains() -> None:
     """Show token savings dashboard."""
     console = Console()
     
+    # Load from the global telemetry file
+    records = load()
+    
     console.print("[bold green]CE Token Savings (Global Scope)[/bold green]")
     console.print("=" * 60)
     console.print()
     
-    console.print("Total commands:   618")
-    console.print("Input tokens:     5.2M")
-    console.print("Output tokens:    1.8M")
-    console.print("Tokens saved:     3.3M (64.9%)")
-    console.print("Total exec time:  29m50s (avg 2.9s)")
+    if not records:
+        console.print("No telemetry data found.")
+        console.print("Run [bold cyan]ce run[/bold cyan] to start tracking savings.")
+        return
+
+    total_commands = len(records)
     
-    # Efficiency meter
-    # 64.9% -> roughly 65% out of 100% -> 26 blocks out of 40
-    filled = int(40 * 0.649)
+    total_input = sum((r.actual_input_tokens or 0) for r in records)
+    total_output = sum((r.actual_output_tokens or 0) for r in records)
+    total_cache_read = sum((r.actual_cache_read_tokens or 0) for r in records)
+    
+    # We estimate 1 token ≈ 4 characters
+    total_chars_saved = sum((r.chars_saved or 0) for r in records)
+    prompt_tokens_saved = total_chars_saved // 4
+    
+    # The user specifies: "cached tokens are basically worthless because 95% are saved"
+    # This means a cache_read_token equates to 0.95 tokens saved.
+    cache_tokens_saved = int(total_cache_read * 0.95)
+    
+    tokens_saved = prompt_tokens_saved + cache_tokens_saved
+    
+    # A total equivalent baseline: 
+    # What we actually paid for: total_input + (total_cache_read * 0.05)
+    # What we would have paid without CE: total_input + total_cache_read + prompt_tokens_saved
+    total_baseline = total_input + total_cache_read + prompt_tokens_saved
+    
+    if total_baseline > 0:
+        efficiency_pct = (tokens_saved / total_baseline) * 100.0
+    else:
+        efficiency_pct = 0.0
+        
+    total_time = sum((r.session_duration_s or 0.0) for r in records)
+    avg_time = (total_time / total_commands) if total_commands > 0 else 0.0
+    
+    def fmt_num(n: int) -> str:
+        if n >= 1_000_000:
+            return f"{n/1_000_000:.1f}M"
+        elif n >= 1_000:
+            return f"{n/1000:.1f}K"
+        return str(n)
+        
+    def fmt_time(t: float) -> str:
+        if t >= 60:
+            m = int(t // 60)
+            s = int(t % 60)
+            return f"{m}m{s}s"
+        elif t >= 1:
+            return f"{t:.1f}s"
+        else:
+            return f"{int(t*1000)}ms"
+
+    console.print(f"Total commands:   {total_commands}")
+    console.print(f"Input tokens:     {fmt_num(total_input)}")
+    console.print(f"Output tokens:    {fmt_num(total_output)}")
+    console.print(f"Cached tokens:    {fmt_num(total_cache_read)}")
+    console.print(f"Tokens saved:     {fmt_num(tokens_saved)} ({efficiency_pct:.1f}%)")
+    console.print(f"Total exec time:  {fmt_time(total_time)} (avg {fmt_time(avg_time)})")
+    
+    filled = int(40 * (efficiency_pct / 100.0))
+    filled = max(0, min(40, filled))
     empty = 40 - filled
     bar = f"[green]{'█' * filled}[/green][grey37]{'▒' * empty}[/grey37]"
-    console.print(f"Efficiency meter: {bar} [bold yellow]64.9%[/bold yellow]")
+    console.print(f"Efficiency meter: {bar} [bold yellow]{efficiency_pct:.1f}%[/bold yellow]")
     
     console.print()
-    console.print("[bold orange1]⚠[/bold orange1]  [orange1]Hook outdated — run `ce init -g` to update[/orange1]")
-    console.print()
     
-    console.print("[bold green]By Command[/bold green]")
-    
+    # We can show stats by model or mode if we want, replacing the static table.
+    console.print("[bold green]By Model[/bold green]")
     table = Table(
         box=None,
         header_style="bold white",
@@ -37,40 +90,31 @@ def gains() -> None:
         show_edge=False,
         show_header=True,
     )
-    # Adding an underline to header manually or via table style
-    table.add_column("#", justify="right", style="white")
-    table.add_column("Command", style="cyan")
-    table.add_column("Count", justify="right", style="white")
-    table.add_column("Saved", justify="right", style="white")
+    table.add_column("Model", style="cyan")
+    table.add_column("Runs", justify="right", style="white")
+    table.add_column("Tokens Saved", justify="right", style="white")
     table.add_column("Avg%", justify="right")
-    table.add_column("Time", justify="right", style="white")
-    table.add_column("Impact", justify="left")
     
-    # Data reflecting the requested categories: command runs, model usage, clears, settings
-    rows = [
-        (1, "ce command runs", 19, "2.9M", "21.7%", "red", "35.7s", 40),
-        (2, "ce model usage", 31, "309.7K", "40.0%", "red", "212ms", 4),
-        (3, "ce cache clears", 339, "68.0K", "3.7%", "red", "2ms", 1),
-        (4, "ce settings changes", 1, "27.8K", "85.9%", "green", "228ms", 1),
-        (5, "ce telemetry", 68, "14.1K", "70.2%", "green", "109ms", 1),
-        (6, "ce init sync", 1, "7.0K", "59.1%", "yellow", "119ms", 1),
-        (7, "ce session compact", 1, "6.6K", "56.6%", "yellow", "138ms", 1),
-        (8, "ce scope check", 1, "6.3K", "61.3%", "yellow", "153ms", 1),
-        (9, "ce audit log", 1, "5.8K", "87.9%", "green", "137ms", 1),
-        (10, "ce mem search", 6, "5.3K", "95.5%", "green", "13.4s", 1),
-    ]
-    
-    for row in rows:
-        num, cmd, count, saved, avg, color, time_str, impact_len = row
-        avg_text = f"[{color}]{avg}[/{color}]"
+    models = set(r.model for r in records)
+    for model in models:
+        m_records = [r for r in records if r.model == model]
+        m_count = len(m_records)
+        m_chars_saved = sum(r.chars_saved for r in m_records)
+        m_cache = sum(r.actual_cache_read_tokens or 0 for r in m_records)
+        m_input = sum(r.actual_input_tokens or 0 for r in m_records)
         
-        # Build impact bar (blue block with dim background if needed)
-        impact_bar = f"[dodger_blue1]{'█' * impact_len}[/dodger_blue1]"
-        if impact_len < 40:
-             impact_bar += f"[grey23]{'▒' * (40 - impact_len)}[/grey23]"
-             
-        table.add_row(str(num) + ".", cmd, str(count), saved, avg_text, time_str, impact_bar)
+        m_saved = (m_chars_saved // 4) + int(m_cache * 0.95)
+        m_baseline = m_input + m_cache + (m_chars_saved // 4)
+        m_pct = (m_saved / m_baseline * 100.0) if m_baseline > 0 else 0.0
         
-    console.print(table)
+        table.add_row(
+            model,
+            str(m_count),
+            fmt_num(m_saved),
+            f"[green]{m_pct:.1f}%[/green]"
+        )
+        
+    if models:
+        console.print(table)
     console.print()
     console.print("─" * 60)

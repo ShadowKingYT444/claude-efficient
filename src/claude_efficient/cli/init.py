@@ -108,9 +108,11 @@ def init(
 
         gen.write(root_path, content)
         gen.write_gemini_md(root_path, content)
+        gen.write_agents_md(root_path, content)
         size = len(content.encode())
         click.secho(f"  ✓ CLAUDE.md generated ({size:,} bytes)", fg="green")
         click.secho(f"  ✓ GEMINI.md generated ({size:,} bytes)", fg="green")
+        click.secho(f"  ✓ AGENTS.md generated ({size:,} bytes)", fg="green")
 
     # ── 5. .claudeignore ────────────────────────────────────────────────────
     click.echo("\n[ce] Generating ignore files...")
@@ -146,6 +148,8 @@ def _build_import_block(
         invoke_fn = partial(helper_fn, task=HelperTask.project_digest_subdir)
         content = gen.generate_subdir(candidate, invoke_helper_fn=invoke_fn)
         (subdir_path / "CLAUDE.md").write_text(content, encoding="utf-8")
+        (subdir_path / "GEMINI.md").write_text(content.replace("CLAUDE.md", "GEMINI.md"), encoding="utf-8")
+        (subdir_path / "AGENTS.md").write_text(content.replace("CLAUDE.md", "AGENTS.md"), encoding="utf-8")
         import_lines.append(f"@{candidate.path}/CLAUDE.md")
     return "\n".join(import_lines)
 
