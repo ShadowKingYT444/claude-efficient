@@ -8,7 +8,6 @@ from pathlib import Path
 import click
 
 from claude_efficient.analysis.cache_health import CacheHealthMonitor
-from claude_efficient.config.defaults import HelperMode
 from claude_efficient.config.loader import resolve_helpers_config
 from claude_efficient.generators.backends import HelperTask
 from claude_efficient.generators.claude_md import ClaudeMdGenerator, write_claude_settings

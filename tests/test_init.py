@@ -12,8 +12,6 @@ from claude_efficient.config.defaults import HelperMode
 from claude_efficient.generators.backends import DeterministicBackend
 from claude_efficient.generators.claude_md import write_claude_settings
 from claude_efficient.generators.extractor import (
-    ExtractedFacts,
-    SubdirCandidate,
     extract_facts,
 )
 
@@ -83,7 +81,7 @@ def _make_ts_files(directory: Path, count: int) -> None:
 
 def _make_go_files(directory: Path, count: int) -> None:
     for i in range(count):
-        (directory / f"pkg_{i}.go").write_text(f"package main")
+        (directory / f"pkg_{i}.go").write_text("package main")
 
 
 def _make_rs_files(directory: Path, count: int) -> None:
@@ -234,4 +232,3 @@ def test_init_helpers_off_flag(tmp_path):
 
 
 # fix missing import for CliRunner used standalone
-from click.testing import CliRunner  # noqa: E402  (already imported above, re-export for clarity)
