@@ -58,6 +58,17 @@ pip install -e .
     ```
     This command displays a detailed dashboard of your token savings across different operations. Token savings are tracked automatically and stored globally (`~/.ce-telemetry.jsonl`), allowing you to view your total savings across all projects.
 
+## 🤖 Other AI CLIs
+
+While `ce` acts as an optimizing wrapper around Claude Code, `ce-tool` also provides drop-in token optimization wrappers for other popular AI command-line tools. These wrappers apply the same prompt optimizations and track your token savings in the global `ce gains` dashboard.
+
+- `ce-gemini`: Wraps the Google Gemini CLI (`gemini`).
+- `ce-codex`: Wraps the OpenAI Codex CLI (`codex`).
+- `ce-cursor`: Wraps the Cursor CLI (`cursor`).
+- `ce-opencode`: Wraps the OpenCode CLI (`opencode`).
+
+You can use these just like their underlying commands (e.g. `ce-gemini run "my task"`).
+
 ## 📋 Commands
 
 `claude-efficient` provides a suite of commands to manage your workflow and optimize token usage.
