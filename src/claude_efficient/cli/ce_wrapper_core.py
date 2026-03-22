@@ -195,8 +195,18 @@ def _run_status(cli_name: str, cwd: Path) -> int:
 
 
 def _run_task(cli_name: str, cwd: Path, agent_name: str, task: str) -> int:
+    import time
+    from datetime import datetime
+    from claude_efficient.prompt.optimizer import optimize
+    from claude_efficient.analysis.telemetry import TelemetryRecord, record as tel_record
+
+    start_time = time.time()
+    
+    opt = optimize(task)
+    optimized_task = opt.text if opt.text else task
+
     marker = _marker_path(cli_name, cwd)
-    command, error = _build_run_command(cli_name, task, cwd, agent_name)
+    command, error = _build_run_command(cli_name, optimized_task, cwd, agent_name)
     if error:
         _write_marker(
             marker,
@@ -237,6 +247,18 @@ def _run_task(cli_name: str, cwd: Path, agent_name: str, task: str) -> int:
         )
         print(message, file=sys.stderr)
         return 1
+
+    duration = time.time() - start_time
+    rec = TelemetryRecord(
+        timestamp=datetime.now().isoformat(timespec="seconds"),
+        mode="pipe",
+        model=cli_name,
+        prompt_chars_original=len(task),
+        prompt_chars_optimized=len(optimized_task),
+        chars_saved=opt.chars_saved,
+        session_duration_s=round(duration, 2),
+    )
+    tel_record(cwd, rec)
 
     if exit_code == 0:
         _write_marker(

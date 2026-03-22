@@ -68,7 +68,7 @@ def _invoke(tmp_path: Path, args: list[str], extra_patches: dict | None = None):
 # ── pipe-mode regression ──────────────────────────────────────────────────────
 
 def test_pipe_mode_command_shape(tmp_path):
-    """Regression: `-p` must produce exactly: claude --model <model> -p <prompt>."""
+    """Regression: `-p` must produce exactly: claude --model <model> -p <prompt> --output-format json."""
     result, mock_run = _invoke(tmp_path, ["-p", "fix the bug in auth.py"])
 
     assert result.exit_code == 0, result.output
@@ -76,8 +76,10 @@ def test_pipe_mode_command_shape(tmp_path):
     assert cmd[0] == "claude"
     assert cmd[1] == "--model"
     assert cmd[3] == "-p"
-    # No extra flags should be injected in default (non-telemetry) pipe mode
-    assert len(cmd) == 5
+    # Pipe mode now automatically adds --output-format json for telemetry
+    assert len(cmd) == 7
+    assert "--output-format" in cmd
+    assert "json" in cmd
 
 
 def test_pipe_mode_prompt_position(tmp_path):
@@ -194,7 +196,7 @@ def test_telemetry_pipe_logs_to_file(tmp_path):
         stack.enter_context(patch("subprocess.run", return_value=mock_proc))
 
         result = runner.invoke(run, [
-            "--root", str(tmp_path), "-p", "--telemetry",
+            "--root", str(tmp_path), "-p",
             "fix the bug in auth.py",
         ])
 
@@ -211,8 +213,8 @@ def test_telemetry_pipe_logs_to_file(tmp_path):
     assert record["meets_50pct_savings_target"] is False
 
 
-def test_telemetry_pipe_command_adds_json_flag(tmp_path):
-    """With --telemetry, pipe mode must add --output-format json to the command."""
+def test_pipe_command_adds_json_flag(tmp_path):
+    """Pipe mode must add --output-format json to the command for telemetry."""
     (tmp_path / "CLAUDE.md").write_text("# test")
     runner = CliRunner()
 
@@ -252,19 +254,14 @@ def test_telemetry_pipe_command_adds_json_flag(tmp_path):
         ))
         stack.enter_context(patch("subprocess.run", side_effect=fake_run))
         runner.invoke(run, [
-            "--root", str(tmp_path), "-p", "--telemetry", "fix bug in auth.py",
+            "--root", str(tmp_path), "-p", "fix bug in auth.py",
         ])
 
     assert "--output-format" in captured_cmd
     assert "json" in captured_cmd
 
 
-def test_no_telemetry_flag_unchanged_pipe_command(tmp_path):
-    """Without --telemetry, pipe command must be exactly 5 elements (regression guard)."""
-    result, mock_run = _invoke(tmp_path, ["-p", "fix the bug in auth.py"])
-    cmd = mock_run.call_args[0][0]
-    assert "--output-format" not in cmd
-    assert len(cmd) == 5
+
 
 
 def test_run_filters_missing_experimental_flag_risk_when_session_env_sets_it(tmp_path):

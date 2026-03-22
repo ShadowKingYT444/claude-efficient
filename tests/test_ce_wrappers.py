@@ -45,13 +45,13 @@ def test_run_codex_uses_headless_exec_and_marks_idle(tmp_path, monkeypatch):
         task="Implement parser",
     )
     assert exit_code == 0
-    assert captured["command"] == [
+    assert captured["command"][:4] == [
         "codex",
         "--cd",
         str(tmp_path.resolve()),
         "exec",
-        "Implement parser",
     ]
+    assert captured["command"][4].startswith("Implement parser")
     assert captured["cwd"] == tmp_path.resolve()
     assert captured["env"]["CE_AGENT_NAME"] == "builder-agent"
 
