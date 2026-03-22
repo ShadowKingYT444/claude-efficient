@@ -205,6 +205,10 @@ def test_telemetry_pipe_logs_to_file(tmp_path):
     assert record["mode"] == "pipe"
     assert record["actual_input_tokens"] == 1000
     assert record["actual_cache_read_tokens"] == 800
+    assert record["baseline_input_tokens"] == 1800
+    assert record["saved_input_tokens"] == 800
+    assert abs(record["session_input_savings_pct"] - 44.4444) < 0.01
+    assert record["meets_50pct_savings_target"] is False
 
 
 def test_telemetry_pipe_command_adds_json_flag(tmp_path):

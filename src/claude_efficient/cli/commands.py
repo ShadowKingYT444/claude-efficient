@@ -57,10 +57,46 @@ def scope_check(task: str, root: str) -> None:
 
 @click.command()
 @click.option("--root", default=".", type=click.Path())
-def telemetry(root: str) -> None:
+@click.option(
+    "--verify-min-savings-pct",
+    type=float,
+    default=None,
+    help="Fail if any verifiable session is below this % savings threshold.",
+)
+def telemetry(root: str, verify_min_savings_pct: float | None) -> None:
     """Show before/after token savings from recorded sessions."""
-    from claude_efficient.analysis.telemetry import summarize
-    click.echo(summarize(Path(root).resolve()))
+    from claude_efficient.analysis.telemetry import summarize, verify_min_session_savings
+
+    root_path = Path(root).resolve()
+    click.echo(summarize(root_path))
+
+    if verify_min_savings_pct is None:
+        return
+
+    verification = verify_min_session_savings(
+        root_path,
+        threshold_pct=verify_min_savings_pct,
+    )
+    if verification.sessions_evaluated == 0:
+        raise click.ClickException(
+            "Verification failed: no sessions have the token usage fields needed for comparison."
+        )
+    if verification.sessions_failing > 0:
+        failing = ", ".join(
+            f"#{idx}" for idx in verification.failing_session_indexes[:5]
+        )
+        raise click.ClickException(
+            "Verification failed: "
+            f"{verification.sessions_failing}/{verification.sessions_evaluated} "
+            f"session(s) below {verify_min_savings_pct:.1f}% savings "
+            f"(failing sessions: {failing})."
+        )
+    click.secho(
+        "[ce] Verification passed: "
+        f"{verification.sessions_passing}/{verification.sessions_evaluated} "
+        f"session(s) met >= {verify_min_savings_pct:.1f}% savings.",
+        fg="green",
+    )
 
 
 @click.command()

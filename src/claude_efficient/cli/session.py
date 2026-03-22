@@ -300,7 +300,16 @@ def _write_telemetry(
     duration: float | None = None,
 ) -> None:
     from datetime import datetime
-    from claude_efficient.analysis.telemetry import TelemetryRecord, record as tel_record
+    from claude_efficient.analysis.telemetry import (
+        TelemetryRecord,
+        estimate_baseline_input_tokens,
+        estimate_session_input_savings_pct,
+        record as tel_record,
+    )
+
+    baseline_input = estimate_baseline_input_tokens(actual_input, actual_cache)
+    savings_pct = estimate_session_input_savings_pct(actual_input, actual_cache)
+    meets_50pct_target = savings_pct >= 50.0 if savings_pct is not None else None
 
     rec = TelemetryRecord(
         timestamp=datetime.now().isoformat(timespec="seconds"),
@@ -312,6 +321,10 @@ def _write_telemetry(
         actual_input_tokens=actual_input,
         actual_output_tokens=actual_output,
         actual_cache_read_tokens=actual_cache,
+        baseline_input_tokens=baseline_input,
+        saved_input_tokens=actual_cache,
+        session_input_savings_pct=savings_pct,
+        meets_50pct_savings_target=meets_50pct_target,
         session_duration_s=round(duration, 2) if duration is not None else None,
     )
     tel_record(root, rec)
