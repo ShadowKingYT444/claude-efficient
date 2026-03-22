@@ -13,13 +13,30 @@
 
 ## 🚀 Installation
 
-`claude-efficient` is a Python package. Ensure you have Python 3.11+ installed.
+`ce-tool` is a Python package. Ensure you have Python 3.11+ installed. Once installed, the `ce` command will be available globally in your terminal.
 
+### Option 1: Install via pip (Recommended for all platforms)
+
+**Windows, macOS, and Linux:**
 ```bash
-pip install claude-efficient
+pip install ce-tool
 ```
 
-This will install the `ce` command-line tool.
+### Option 2: Install from Source (Git Clone)
+
+If you prefer to clone the repository and run it locally, follow these steps.
+
+**Windows, macOS, and Linux:**
+```bash
+# 1. Clone the repository
+git clone https://github.com/thedotmack/claude-efficient.git
+
+# 2. Navigate into the directory
+cd claude-efficient
+
+# 3. Install the package globally so the 'ce' command works anywhere
+pip install -e .
+```
 
 ## ✨ Quick Start
 

@@ -3,9 +3,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "claude-efficient"
+name = "ce-tool"
 version = "0.1.0"
 description = "Token optimization wrapper for Claude Code sessions"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.1",
@@ -28,3 +29,6 @@ ce-gemini = "claude_efficient.cli.ce_gemini:main"
 ce-opencode = "claude_efficient.cli.ce_opencode:main"
 ce-cursor = "claude_efficient.cli.ce_cursor:main"
 ce-router = "claude_efficient.cli.ce_router:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/claude_efficient"]
