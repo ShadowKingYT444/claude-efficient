@@ -45,6 +45,8 @@ def test_run_gemini_uses_headless_mode_and_marks_idle(tmp_path, monkeypatch):
         task="Find all TODOs",
     )
     assert exit_code == 0
+    # The prompt is optimized: added "Output: code only, no preamble."
+    expected_task = "Find all TODOs\nOutput: code only, no preamble."
     assert captured["command"] == [
         "gemini",
         "--include-directories",
@@ -52,7 +54,7 @@ def test_run_gemini_uses_headless_mode_and_marks_idle(tmp_path, monkeypatch):
         "--approval-mode",
         "auto",
         "-p",
-        "Find all TODOs",
+        expected_task,
     ]
     assert captured["cwd"] == tmp_path.resolve()
     assert captured["env"]["CE_AGENT_NAME"] == "scout-agent"
