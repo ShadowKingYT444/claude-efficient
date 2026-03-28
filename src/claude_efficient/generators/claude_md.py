@@ -3,12 +3,10 @@ from __future__ import annotations
 
 import json
 import sys
-from collections.abc import Callable
 from pathlib import Path
 
 from claude_efficient.generators.architecture import (
     ArchitectureMap,
-    extract_architecture,
     generate_anti_exploration,
     render_architecture_md,
 )

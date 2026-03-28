@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import shutil
-from functools import partial
 from pathlib import Path
 
 import click
@@ -131,10 +130,10 @@ def init(
 
     # ── 6. Hooks (PreCompact + output enforcer) ──────────────────────────
     click.echo("\n[ce] Writing hooks...")
-    settings_path = write_claude_settings(root_path)
-    click.secho(f"  ✓ PreCompact hook — context survives /compact", fg="green")
+    write_claude_settings(root_path)
+    click.secho("  ✓ PreCompact hook — context survives /compact", fg="green")
     write_enforcer_hooks(root_path)
-    click.secho(f"  ✓ Output enforcer — token discipline on every prompt", fg="green")
+    click.secho("  ✓ Output enforcer — token discipline on every prompt", fg="green")
 
     # ── 7. Summary ──────────────────────────────────────────────────────────
     click.echo(f"\n{sep}")

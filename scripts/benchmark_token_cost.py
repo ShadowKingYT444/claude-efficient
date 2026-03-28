@@ -1,8 +1,6 @@
-import json
 from pathlib import Path
 from dataclasses import dataclass
 from claude_efficient.generators.extractor import extract_facts, _get_file_desc
-from claude_efficient.generators.claude_md import _serialize_facts
 from test_ast_extractor import extract_rich_desc
 
 # --- Cost Assumptions ---
@@ -45,7 +43,7 @@ def simulate_agent(task: str, claude_md_content: str) -> tuple[int, list[str]]:
     
     log.append(f"ANALYSIS: Agent sees this info for audit.py: '{cli_file_info}'")
 
-    if not cli_file_info or not "audit" in cli_file_info:
+    if not cli_file_info or "audit" not in cli_file_info:
         # If the file isn't even listed, it has to guess
         turns += 1
         log.append(f"TURN {turns}: File 'audit.py' not found or undescribed. Agent must use `grep` or `ls` to find it. (Penalty turn)")
@@ -67,7 +65,7 @@ def simulate_agent(task: str, claude_md_content: str) -> tuple[int, list[str]]:
 def run_comparison():
     """Compares total token cost across different generation strategies."""
     root = Path.cwd()
-    facts = extract_facts(root)
+    extract_facts(root)
     task = "Add a --format option to the audit command that can be either 'json' or 'text'."
     
     results = []

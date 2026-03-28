@@ -137,7 +137,7 @@ def gains(audit: str | None, output_json: bool, verify_min_savings_pct: float | 
     console.print()
 
     # Section 4: Session stats
-    console.print(f"[bold cyan]SESSION STATS:[/bold cyan]")
+    console.print("[bold cyan]SESSION STATS:[/bold cyan]")
     console.print(f"  Sessions tracked:  {total_commands}")
 
     interactive_count = sum(1 for r in records if r.mode == "interactive")

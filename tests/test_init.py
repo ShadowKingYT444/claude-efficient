@@ -206,7 +206,7 @@ def test_no_raw_file_contents_in_helper_input(tmp_path):
     # Call render_facts_to_prompt and pass to fake helper to check for leaks
     prompt = gen.render_facts_to_prompt(facts)
     _fake_helper(prompt)
-    result = gen.generate_root(facts, project_summary=None)
+    gen.generate_root(facts, project_summary=None)
 
     assert captured_inputs, "Helper was never called"
     for inp in captured_inputs:
