@@ -13,6 +13,12 @@ def test_subcommands_present():
     result = runner.invoke(cli, ["--help"])
     assert "init" in result.output
     assert "run" in result.output
+    assert "gains" in result.output
+
+
+def test_verbose_shows_hidden_commands():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--verbose", "--help"])
     assert "audit" in result.output
 
 

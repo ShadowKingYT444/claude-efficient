@@ -6,6 +6,12 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from claude_efficient.generators.architecture import (
+    ArchitectureMap,
+    extract_architecture,
+    generate_anti_exploration,
+    render_architecture_md,
+)
 from claude_efficient.generators.extractor import ExtractedFacts, SubdirCandidate
 
 ALWAYS_SKIP = {
@@ -14,11 +20,39 @@ ALWAYS_SKIP = {
 }
 
 SESSION_RULES = """\
-## Session rules
-- Code only. No preamble. No narration. One file per response.
+## MANDATORY OUTPUT FORMAT (violations waste tokens = waste money)
+
+### Response Structure (EVERY response must follow this)
+1. Tool calls OR code blocks. Nothing else.
+2. NO explanations before code. NO summaries after code.
+3. NO "Let me...", "I'll...", "Here's...", "Now I'll..." preamble.
+4. NO "I've completed...", "This should...", "The changes..." postamble.
+5. If asked to explain: bullet points only, max 3 bullets, max 15 words each.
+
+### File Operations
+- Before reading ANY file: check if its path+purpose is documented above.
+  If documented, skip the read unless you need exact line numbers.
+- Never re-read a file already shown in this conversation.
+- Never read files listed in "Skip These Files" section.
+- Batch all related file reads into one turn (parallel tool calls).
+
+### Code Output
+- Write the minimal diff. Don't rewrite unchanged code.
+- No comments explaining what the code does (the code IS the explanation).
+- No type annotations unless the project already uses them.
+- No docstrings unless the project already has them.
+
+### Tool Call Discipline
+- Batch file reads: read all needed files in ONE turn (parallel tool calls).
+- Don't read a file just to check one thing — grep for it instead.
+- Don't run tests after every small change — batch changes, test once.
+- If a command fails, fix the root cause; don't retry the same command.
+- Prefer Edit over Write for existing files (smaller diffs = fewer tokens).
+
+### Session Management
 - Never switch models mid-session (invalidates prompt cache).
 - Prefer /clear + new session over /compact at natural breakpoints.
-- Do not re-read files already shown in this conversation."""
+- If you've made 3+ tool calls without writing code, stop exploring and start writing."""
 
 
 def _build_precompact_command() -> str:
@@ -74,7 +108,7 @@ def write_claude_settings(root: Path) -> Path:
 
 
 def _serialize_facts(facts: ExtractedFacts) -> str:
-    """Serialize ExtractedFacts to compact text for helper input. No file contents included."""
+    """Serialize ExtractedFacts to compact text for helper input."""
     parts: list[str] = []
     if facts.tree:
         parts.append("STRUCTURE:\n" + "\n".join(facts.tree))
@@ -85,6 +119,11 @@ def _serialize_facts(facts: ExtractedFacts) -> str:
         parts.append("COMMANDS:\n" + cmd_lines)
     if facts.key_configs:
         parts.append("KEY CONFIGS:\n" + "\n".join(f"  {c}" for c in facts.key_configs))
+    if facts.key_file_contents:
+        file_contents = []
+        for path, content in facts.key_file_contents.items():
+            file_contents.append(f"--- {path} ---\n{content}")
+        parts.append("KEY FILE CONTENTS:\n" + "\n".join(file_contents))
     qualifying = [c for c in facts.subdir_candidates if c.qualifies]
     if qualifying:
         subdir_lines = "\n".join(
@@ -94,7 +133,7 @@ def _serialize_facts(facts: ExtractedFacts) -> str:
     return "\n\n".join(parts)
 
 
-def _deterministic_root(facts: ExtractedFacts) -> str:
+def _deterministic_root(facts: ExtractedFacts, arch: ArchitectureMap | None = None) -> str:
     lines: list[str] = ["# Project\n"]
     if facts.languages:
         lines.append("## Languages\n" + ", ".join(facts.languages) + "\n")
@@ -103,15 +142,22 @@ def _deterministic_root(facts: ExtractedFacts) -> str:
         for k, v in facts.commands.items():
             lines.append(f"- {k}: `{v}`")
         lines.append("")
-    if facts.tree:
-        lines.append("## Structure")
-        lines.extend(facts.tree[:15])
-        lines.append("")
+    if arch:
+        arch_md = render_architecture_md(arch)
+        if arch_md.strip():
+            lines.append(arch_md)
+    else:
+        if facts.tree:
+            lines.append("## Structure")
+            lines.extend(facts.tree[:15])
+            lines.append("")
     if facts.key_configs:
         lines.append("## Key configs")
         lines.extend(f"- {c}" for c in facts.key_configs[:12])
         lines.append("")
     lines.append(SESSION_RULES)
+    if arch:
+        lines.append("\n" + generate_anti_exploration(arch))
     return "\n".join(lines)
 
 
@@ -131,45 +177,41 @@ class ClaudeMdGenerator:
     MAX_BYTES = 8_000
     SUBDIR_MAX_BYTES = 4_000
 
+    def render_facts_to_prompt(self, facts: ExtractedFacts) -> str:
+        """Renders extracted facts into a structured prompt for an LLM."""
+        return (
+            "You are generating a CLAUDE.md file for an AI coding assistant. "
+            "Output ONLY valid Markdown (no JSON/YAML wrappers). Include the project structure, languages, commands, "
+            "and briefly describe the purpose of each key file based on the provided names/descriptions and their content.\n\n"
+            "## Extracted Facts:\n"
+            + _serialize_facts(facts)
+        )
+
     def generate_root(
         self,
         facts: ExtractedFacts,
-        *,
-        invoke_helper_fn: Callable[[str], str | None] | None,
+        project_summary: str | None,
+        arch: ArchitectureMap | None = None,
     ) -> str:
         """
         Generate root CLAUDE.md from extracted facts.
-
-        invoke_helper_fn receives the serialized ExtractedFacts (no raw file contents).
-        Returns None to signal fallback; ClaudeMdGenerator then uses deterministic rendering.
+        Uses project_summary from helper if provided, otherwise deterministic.
+        If arch is provided, enriches output with deep architecture map + anti-exploration.
         """
-        result: str | None = None
-        if invoke_helper_fn is not None:
-            prompt = (
-                "You are generating a CLAUDE.md file for an AI coding assistant. "
-                "Output ONLY valid Markdown (no JSON/YAML wrappers). Include the project structure, languages, commands, "
-                "and briefly describe the purpose of each key file based on the provided names/descriptions.\n\n"
-                "## Extracted Facts:\n"
-                + _serialize_facts(facts)
-            )
-            result = invoke_helper_fn(prompt)
-        if result is None:
-            result = _deterministic_root(facts)
+        if project_summary:
+            result = project_summary
+            # Even with a helper summary, append anti-exploration if architecture available
+            if arch:
+                result += "\n\n" + generate_anti_exploration(arch)
+        else:
+            result = _deterministic_root(facts, arch)
         if len(result.encode()) > self.MAX_BYTES:
             result = self._trim(result)
         return result
 
-    def generate_subdir(
-        self,
-        candidate: SubdirCandidate,
-        *,
-        invoke_helper_fn: Callable[[str], str | None] | None,
-    ) -> str:
-        """
-        Generate subdir CLAUDE.md. Returns the content string.
-        invoke_helper_fn returns None to signal fallback.
-        """
-        content_input = (
+    def render_subdir_facts_to_prompt(self, candidate: SubdirCandidate) -> str:
+        """Renders subdirectory facts into a structured prompt for an LLM."""
+        prompt = (
             "You are generating a subdir-level CLAUDE.md file for an AI assistant. "
             "Output ONLY valid Markdown (no JSON/YAML wrappers). List the files and briefly describe what this subdirectory and its files are responsible for.\n\n"
             f"SUBDIR: {candidate.path}\n"
@@ -177,11 +219,22 @@ class ClaudeMdGenerator:
             f"FILES: {candidate.file_count}\n"
             f"DESCRIPTIONS:\n" + "\n".join(f"  {f}: {d}" if d else f"  {f}" for f, d in candidate.files.items())
         )
-        result: str | None = None
-        if invoke_helper_fn is not None:
-            result = invoke_helper_fn(content_input)
-        if result is None:
-            result = _deterministic_subdir(candidate)
+        if candidate.key_file_contents:
+            key_contents = []
+            for path, content in candidate.key_file_contents.items():
+                key_contents.append(f"--- {path} ---\n{content}")
+            prompt += "\n\nKEY FILE CONTENTS:\n" + "\n".join(key_contents)
+        return prompt
+
+    def generate_subdir(
+        self,
+        candidate: SubdirCandidate,
+        subdir_summary: str | None,
+    ) -> str:
+        """
+        Generate subdir CLAUDE.md. Returns the content string.
+        """
+        result = subdir_summary if subdir_summary else _deterministic_subdir(candidate)
         encoded = result.encode("utf-8")
         if len(encoded) > self.SUBDIR_MAX_BYTES:
             result = encoded[:self.SUBDIR_MAX_BYTES].decode("utf-8", errors="ignore")

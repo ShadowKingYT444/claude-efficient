@@ -1,6 +1,7 @@
 """Phase 4: Deterministic project fact extraction. No file contents are read."""
 from __future__ import annotations
 
+import ast
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,6 +40,7 @@ class SubdirCandidate:
     file_count: int
     qualifies: bool
     files: dict[str, str] = field(default_factory=dict)
+    key_file_contents: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -47,41 +49,62 @@ class ExtractedFacts:
     commands: dict[str, str] = field(default_factory=dict)
     languages: list[str] = field(default_factory=list)
     key_configs: list[str] = field(default_factory=list)
+    key_file_contents: dict[str, str] = field(default_factory=dict)
     subdir_candidates: list[SubdirCandidate] = field(default_factory=list)
 
 
 def extract_facts(project_root: Path) -> ExtractedFacts:
-    return ExtractedFacts(
-        tree=_scan_tree(project_root),
-        commands=_extract_commands(project_root),
-        languages=_detect_languages(project_root),
-        key_configs=_find_key_configs(project_root),
-        subdir_candidates=_find_subdir_candidates(project_root),
-    )
+    facts = ExtractedFacts()
+    facts.tree, facts.key_file_contents = _scan_tree(project_root)
+    facts.commands = _extract_commands(project_root)
+    facts.languages = _detect_languages(project_root)
+    facts.key_configs = _find_key_configs(project_root)
+    facts.subdir_candidates = _find_subdir_candidates(project_root)
+    return facts
 
 
 def _get_file_desc(path: Path) -> str:
+    if path.suffix != ".py":
+        try:
+            content = path.read_text(encoding="utf-8", errors="ignore")
+            for line in content.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith(('"""', "'''")):
+                    return line.strip(" \"'")[:100]
+                if line.startswith(("#", "//", "/*", "*", "<!--")):
+                    cleaned = line.lstrip("#/ *<!-").strip()
+                    if cleaned:
+                        return cleaned[:100]
+                if line.startswith(("import ", "from ", "package ", "use ")):
+                    if "__future__" in line:
+                        continue
+                    break
+        except Exception:
+            pass
+        return ""
+
     try:
         content = path.read_text(encoding="utf-8", errors="ignore")
-        for line in content.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith(('"""', "'''")):
-                return line.strip(" \"'")[:100]
-            if line.startswith(("#", "//", "/*", "*", "<!--")):
-                cleaned = line.lstrip("#/ *<!-").strip()
-                if cleaned:
-                    return cleaned[:100]
-            if not line.startswith(("import ", "from ", "package ", "use ")):
-                break
+        tree = ast.parse(content)
+        symbols = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                symbols.append(f"def {node.name}()")
+            elif isinstance(node, ast.AsyncFunctionDef):
+                symbols.append(f"async def {node.name}()")
+            elif isinstance(node, ast.ClassDef):
+                symbols.append(f"class {node.name}")
+        return ", ".join(symbols)
     except Exception:
-        pass
-    return ""
+        return ""
 
 
-def _scan_tree(root: Path, max_entries: int = 15) -> list[str]:
+def _scan_tree(root: Path, max_entries: int = 15) -> tuple[list[str], dict[str, str]]:
     entries: list[str] = []
+    key_files: dict[str, str] = {}
+    key_file_names = {"main.py", "cli.py", "app.py", "index.ts", "lib.rs", "mod.go"}
     try:
         for entry in sorted(root.iterdir(), key=lambda p: (p.is_file(), p.name)):
             if entry.name in ALWAYS_SKIP or entry.name.startswith("."):
@@ -92,11 +115,18 @@ def _scan_tree(root: Path, max_entries: int = 15) -> list[str]:
             else:
                 desc = _get_file_desc(entry)
                 entries.append(f"{rel} - {desc}" if desc else str(rel))
+                if entry.name in key_file_names and len(key_files) < 5:
+                    try:
+                        content = entry.read_text(encoding="utf-8", errors="ignore")
+                        if len(content.encode()) < 8000:
+                            key_files[str(rel)] = content
+                    except Exception:
+                        pass
             if len(entries) >= max_entries:
                 break
     except (PermissionError, OSError):
         pass
-    return entries
+    return entries, key_files
 
 
 def _detect_languages(root: Path) -> list[str]:
@@ -139,13 +169,21 @@ def _find_subdir_candidates(root: Path) -> list[SubdirCandidate]:
         for lang, exts in LANGUAGE_EXTENSIONS.items():
             count = 0
             files_desc: dict[str, str] = {}
+            key_contents: dict[str, str] = {}
             for ext in exts:
                 try:
                     for f in subdir.glob(f"*{ext}"):
                         count += 1
-                        if len(files_desc) < 20:  # limit to 20 files per subdir context
+                        if len(files_desc) < 20:
                             desc = _get_file_desc(f)
                             files_desc[f.name] = desc
+                        if f.name == "__init__.py" and not key_contents:
+                             try:
+                                content = f.read_text(encoding="utf-8", errors="ignore")
+                                if len(content.encode()) < 4000:
+                                    key_contents[f.name] = content
+                             except Exception:
+                                pass
                 except (PermissionError, OSError):
                     pass
             if count > 0:
@@ -155,6 +193,7 @@ def _find_subdir_candidates(root: Path) -> list[SubdirCandidate]:
                     file_count=count,
                     qualifies=count >= QUALIFY_THRESHOLDS[lang],
                     files=files_desc,
+                    key_file_contents=key_contents,
                 ))
     return candidates
 

@@ -4,27 +4,37 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ce-tool"
-version = "0.1.0"
+version = "0.2.0"
 description = "Token optimization wrapper for Claude Code sessions"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "click>=8.1",
     "requests>=2.31",
-    "tomllib>=1.0; python_version < '3.11'",
     "rich>=13.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/thedotmack/claude-efficient"
-Issues   = "https://github.com/thedotmack/claude-efficient/issues"
+Homepage = "https://github.com/ShadowKingYT444/claude-efficient"
+Issues   = "https://github.com/ShadowKingYT444/claude-efficient/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.4", "pytest-mock>=3.0", "build"]
 
 [project.scripts]
 ce = "claude_efficient.cli.main:cli"
-ce-codex = "claude_efficient.cli.ce_codex:main"
 ce-gemini = "claude_efficient.cli.ce_gemini:main"
 ce-opencode = "claude_efficient.cli.ce_opencode:main"
 ce-cursor = "claude_efficient.cli.ce_cursor:main"
@@ -32,3 +42,6 @@ ce-router = "claude_efficient.cli.ce_router:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/claude_efficient"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/claude_efficient"]

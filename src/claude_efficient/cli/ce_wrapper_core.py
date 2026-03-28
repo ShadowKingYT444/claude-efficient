@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SUPPORTED_CLIS = ("codex", "gemini", "opencode", "cursor")
+SUPPORTED_CLIS = ("gemini", "opencode", "cursor")
 STATUS_VALUES = {"idle", "running", "error"}
 
 
@@ -105,16 +105,13 @@ def _spawn_process(command: list[str], cwd: Path, env: dict[str, str]) -> subpro
 
 
 def _build_run_command(cli_name: str, task: str, cwd: Path, agent_name: str) -> tuple[list[str] | None, str | None]:
-    if cli_name == "codex":
-        return ["codex", "--cd", str(cwd), "exec", task], None
-
     if cli_name == "gemini":
         return [
             "gemini",
             "--include-directories",
             str(cwd),
             "--approval-mode",
-            "yolo",
+            "auto",
             "-p",
             task,
         ], None

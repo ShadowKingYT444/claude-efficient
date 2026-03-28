@@ -20,7 +20,7 @@ min_files_to_parallelize = 2
 max_parallel = 4
 
 [mcp]
-auto_prune = false           # disabled — SPEC_09 replaces pruner with env-var approach
+auto_prune = true            # automated task-scoped .mcp.json generation before sessions
 # Servers in always_keep are NEVER disabled regardless of task keywords.
 # claude_mem hooks (SessionStart, PostToolUse, SessionEnd) are passive capture hooks —
 # not user-invoked tools. Disabling the server kills the capture pipeline silently.

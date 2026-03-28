@@ -25,6 +25,10 @@ def audit(transcript: str | None, output_json: bool) -> None:
         click.echo("[ce] Save a session: ce run 'task' > session.log 2>&1")
         return
 
+    run_audit_report(transcript, output_json)
+
+
+def run_audit_report(transcript: str, output_json: bool = False) -> None:
     path = Path(transcript)
     if not path.exists():
         click.secho(f"[ce] ERROR: File not found: {path}", fg="red")

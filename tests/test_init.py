@@ -175,14 +175,15 @@ def test_init_no_backend_produces_valid_claude_md(tmp_path):
 
 
 def test_claude_md_under_size_budget(tmp_path):
-    """Generated CLAUDE.md must stay under 500 lines / ~3000 tokens."""
+    """Generated CLAUDE.md must stay under 500 lines / MAX_BYTES."""
     for i in range(20):
         (tmp_path / f"module_{i}.py").write_text(f"# module {i}\n" + "x = 1\n" * 50)
     result = _invoke_init(tmp_path, ["--no-import-tree"])
     assert result.exit_code == 0, result.output
     content = (tmp_path / "CLAUDE.md").read_text()
     assert len(content.splitlines()) < 500
-    assert len(content.encode()) <= 3_000
+    from claude_efficient.generators.claude_md import ClaudeMdGenerator
+    assert len(content.encode()) <= ClaudeMdGenerator.MAX_BYTES
 
 
 def test_no_raw_file_contents_in_helper_input(tmp_path):
@@ -201,7 +202,11 @@ def test_no_raw_file_contents_in_helper_input(tmp_path):
 
     facts = extract_facts(tmp_path)
     gen = ClaudeMdGenerator()
-    gen.generate_root(facts, invoke_helper_fn=_fake_helper)
+
+    # Call render_facts_to_prompt and pass to fake helper to check for leaks
+    prompt = gen.render_facts_to_prompt(facts)
+    _fake_helper(prompt)
+    result = gen.generate_root(facts, project_summary=None)
 
     assert captured_inputs, "Helper was never called"
     for inp in captured_inputs:

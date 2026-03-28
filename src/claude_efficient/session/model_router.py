@@ -30,11 +30,29 @@ class RoutingDecision:
     note: str = ""
 
 
-def route(task_prompt: str) -> RoutingDecision:
+def route(task_prompt: str, task_shape: str | None = None) -> RoutingDecision:
     """
     Select model for the FULL session. This decision is made once, at session start.
     The chosen model must not change mid-session — doing so invalidates the prompt cache.
+
+    task_shape: optional hint from classify_task_shape() for smarter routing.
     """
+    # Shape-based routing (more accurate than keyword matching)
+    if task_shape:
+        if task_shape in ("explain", "system_design"):
+            return RoutingDecision(
+                model=OPUS,
+                reason=f"task shape: {task_shape}",
+                note="Full session on Opus — do not switch to Sonnet mid-session",
+            )
+        if task_shape in ("file_edit", "new_file"):
+            return RoutingDecision(
+                model=SONNET,
+                reason=f"task shape: {task_shape}",
+                note="Sonnet saves on output tokens; Opus savings disappear with cache hits",
+            )
+
+    # Fallback to keyword matching
     lowered = task_prompt.lower()
     for trigger in OPUS_TRIGGERS:
         if trigger in lowered:

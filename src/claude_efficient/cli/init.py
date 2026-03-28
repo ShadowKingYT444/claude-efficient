@@ -10,10 +10,12 @@ import click
 from claude_efficient.analysis.cache_health import CacheHealthMonitor
 from claude_efficient.config.loader import resolve_helpers_config
 from claude_efficient.generators.backends import HelperTask
+from claude_efficient.generators.architecture import extract_architecture
 from claude_efficient.generators.claude_md import ClaudeMdGenerator, write_claude_settings
 from claude_efficient.generators.claudeignore import ClaudeignoreGenerator
 from claude_efficient.generators.extractor import extract_facts
 from claude_efficient.generators.orchestrator import invoke_helper
+from claude_efficient.hooks.output_enforcer import write_enforcer_hooks
 
 
 @click.command()
@@ -69,10 +71,6 @@ def init(
         click.secho(f"  ERROR: {e}", fg="red")
         raise SystemExit(1)
 
-    def _helper_fn(content: str, task: HelperTask) -> str | None:
-        resp = invoke_helper(task, content, mode=mode, backend=backend)
-        return None if resp.used_fallback else resp.text
-
     # ── 4. CLAUDE.md ────────────────────────────────────────────────────────
     claude_md_path = root_path / "CLAUDE.md"
     gen = ClaudeMdGenerator()
@@ -80,7 +78,7 @@ def init(
     if reimport:
         click.echo("\n[ce] Regenerating @import tree...")
         facts = extract_facts(root_path)
-        import_block = _build_import_block(root_path, gen, facts, _helper_fn)
+        import_block = _build_import_block(root_path, gen, facts, mode, backend)
         if import_block:
             existing = claude_md_path.read_text(encoding="utf-8") if claude_md_path.exists() else ""
             if "## Subdirectory context" in existing:
@@ -97,11 +95,22 @@ def init(
         click.echo("\n[ce] Scanning codebase...")
         facts = extract_facts(root_path)
 
-        invoke_fn = partial(_helper_fn, task=HelperTask.project_digest_root)
-        content = gen.generate_root(facts, invoke_helper_fn=invoke_fn)
+        click.echo("[ce] Extracting deep architecture...")
+        arch = extract_architecture(root_path)
+
+        # New hybrid approach: get LLM summary first
+        response = invoke_helper(
+            HelperTask.project_digest_root,
+            gen.render_facts_to_prompt(facts),
+            mode=mode,
+            backend=backend
+        )
+        project_summary = response.text if not response.used_fallback else ""
+
+        content = gen.generate_root(facts, project_summary, arch=arch)
 
         if not no_import_tree:
-            import_block = _build_import_block(root_path, gen, facts, _helper_fn)
+            import_block = _build_import_block(root_path, gen, facts, mode, backend)
             if import_block:
                 content += import_block
                 click.secho("  ✓ @import tree generated for qualifying subdirectories", fg="green")
@@ -120,10 +129,12 @@ def init(
     ig_gen.write(root_path, ig_gen.generate(root_path))
     click.secho("  ✓ .claudeignore + .geminiignore", fg="green")
 
-    # ── 6. PreCompact hook ──────────────────────────────────────────────────
-    click.echo("\n[ce] Writing PreCompact hook...")
+    # ── 6. Hooks (PreCompact + output enforcer) ──────────────────────────
+    click.echo("\n[ce] Writing hooks...")
     settings_path = write_claude_settings(root_path)
-    click.secho(f"  ✓ {settings_path.relative_to(root_path)} — context survives /compact", fg="green")
+    click.secho(f"  ✓ PreCompact hook — context survives /compact", fg="green")
+    write_enforcer_hooks(root_path)
+    click.secho(f"  ✓ Output enforcer — token discipline on every prompt", fg="green")
 
     # ── 7. Summary ──────────────────────────────────────────────────────────
     click.echo(f"\n{sep}")
@@ -136,7 +147,8 @@ def _build_import_block(
     root_path: Path,
     gen: ClaudeMdGenerator,
     facts,
-    helper_fn,
+    mode,
+    backend,
 ) -> str:
     qualifying = [c for c in facts.subdir_candidates if c.qualifies]
     if not qualifying:
@@ -145,8 +157,14 @@ def _build_import_block(
     for candidate in qualifying[:5]:
         subdir_path = root_path / candidate.path
         subdir_path.mkdir(parents=True, exist_ok=True)
-        invoke_fn = partial(helper_fn, task=HelperTask.project_digest_subdir)
-        content = gen.generate_subdir(candidate, invoke_helper_fn=invoke_fn)
+        response = invoke_helper(
+            HelperTask.project_digest_subdir,
+            gen.render_subdir_facts_to_prompt(candidate),
+            mode=mode,
+            backend=backend,
+        )
+        summary = response.text if not response.used_fallback else ""
+        content = gen.generate_subdir(candidate, summary)
         (subdir_path / "CLAUDE.md").write_text(content, encoding="utf-8")
         (subdir_path / "GEMINI.md").write_text(content.replace("CLAUDE.md", "GEMINI.md"), encoding="utf-8")
         (subdir_path / "AGENTS.md").write_text(content.replace("CLAUDE.md", "AGENTS.md"), encoding="utf-8")

@@ -1,90 +1,63 @@
-<div align="center">
-  <br />
-  <h1>Claude Efficient</h1>
-  <p>
-    <strong>Stop burning Claude Code tokens.</strong>
-  </p>
-  <p>
-    <code>ce</code> wraps every session with automatic optimizations to save you money and improve context quality.
-  </p>
-</div>
+# Claude Efficient (ce-tool)
 
----
+**Maximize token efficiency and context quality for AI agent sessions.**
+
+`claude-efficient` (invoked as `ce`) is a powerful optimization wrapper for Claude Code and other AI command-line tools. It automatically normalizes prompts, prunes unnecessary context, and tracks token savings to keep your sessions fast, cost-effective, and highly contextual.
 
 ## 🚀 Installation
 
-`ce-tool` is a Python package. Ensure you have Python 3.11+ installed. Once installed, the `ce` command will be available globally in your terminal.
+Ensure you have **Python 3.11+** installed.
 
-### Option 1: Install via pip (Recommended for all platforms)
-
-**Windows, macOS, and Linux:**
+### Quick Install (Pip)
 ```bash
 pip install ce-tool
 ```
 
-### Option 2: Install from Source (Git Clone)
-
-If you prefer to clone the repository and run it locally, follow these steps.
-
-**Windows, macOS, and Linux:**
+### From Source
 ```bash
-# 1. Clone the repository
-git clone https://github.com/thedotmack/claude-efficient.git
-
-# 2. Navigate into the directory
+git clone https://github.com/ShadowKingYT444/claude-efficient.git
 cd claude-efficient
-
-# 3. Install the package globally so the 'ce' command works anywhere
 pip install -e .
 ```
 
-## ✨ Quick Start
+## ✨ Core Workflow
 
-1.  **Initialize your project:**
-    ```bash
-    ce init
-    ```
-    This command sets up your project with a `CLAUDE.md`, `.claudeignore`, and other necessary configurations for optimal performance.
+### 1. Initialize your project
+```bash
+ce init
+```
+Generates optimized project maps (`CLAUDE.md`, `GEMINI.md`) and configuration files to help AI agents understand your codebase without excessive file exploration.
 
-2.  **Run a task:**
-    ```bash
-    ce run "Your task description here. For example, build a FastAPI endpoint for user auth."
-    ```
-    This is the main command you'll use. It automatically optimizes your request, manages session context, and routes it appropriately.
+### 2. Run optimized tasks
+```bash
+ce run "Add a new endpoint to the users API"
+```
+Automatically applies character-level prompt optimization, model routing, and context management before launching the session.
 
-3.  **Check your savings:**
-    ```bash
-    ce gains
-    ```
-    This command displays a detailed dashboard of your token savings across different operations. Token savings are tracked automatically and stored globally (`~/.ce-telemetry.jsonl`), allowing you to view your total savings across all projects.
+### 3. Track your savings
+```bash
+ce gains
+```
+View a detailed dashboard of token savings, session durations, and cache efficiency across all your projects.
 
-## 🤖 Other AI CLIs
+## 🤖 Multi-Agent Support
 
-While `ce` acts as an optimizing wrapper around Claude Code, `ce-tool` also provides drop-in token optimization wrappers for other popular AI command-line tools. These wrappers apply the same prompt optimizations and track your token savings in the global `ce gains` dashboard.
+CE provides drop-in optimization wrappers for other popular AI CLIs, applying the same prompt normalization and telemetry tracking:
 
-- `ce-gemini`: Wraps the Google Gemini CLI (`gemini`).
-- `ce-codex`: Wraps the OpenAI Codex CLI (`codex`).
-- `ce-cursor`: Wraps the Cursor CLI (`cursor`).
-- `ce-opencode`: Wraps the OpenCode CLI (`opencode`).
+- `ce-gemini`: Optimization wrapper for the Google Gemini CLI.
+- `ce-cursor`: Optimization wrapper for the Cursor CLI.
+- `ce-opencode`: Optimization wrapper for the OpenCode CLI.
 
-You can use these just like their underlying commands (e.g. `ce-gemini run "my task"`).
+## 📋 Available Commands
 
-## 📋 Commands
-
-`claude-efficient` provides a suite of commands to manage your workflow and optimize token usage.
-
-| Command         | Description                                                              |
-| --------------- | ------------------------------------------------------------------------ |
-| `ce init`       | Initializes a new or existing project for use with `claude-efficient`.   |
-| `ce run [TASK]` | Runs a new coding session with the given task, applying optimizations.   |
-| `ce gains`      | Displays the token savings dashboard.                                    |
-| `ce status`     | Shows a health dashboard for the current project configuration.          |
-| `ce audit [LOG]`| Audits a session log to detect inefficiencies and suggest improvements.  |
-| `ce mem-search` | Searches cross-session memory for relevant context from past tasks.      |
-| `ce scope-check`| Estimates the token requirements for a task before running a session.    |
-| `ce helpers`    | Provides assistance with setting up helpers and integrations.            |
+| Command | Description |
+| :--- | :--- |
+| `ce init` | Set up a project with optimized context maps. |
+| `ce run [TASK]` | Start an optimized AI agent session. |
+| `ce gains` | Display the token savings and efficiency dashboard. |
+| `ce status` | Check project health and cache optimization status. |
+| `ce audit [LOG]` | Analyze session logs for token waste. |
+| `ce mem-search` | Search cross-session memory for relevant context. |
 
 ---
-<div align="center">
-  <p>Made with ❤️ for efficient coding sessions.</p>
-</div>
+*Optimizing the way you build with AI.*

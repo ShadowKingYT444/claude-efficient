@@ -20,7 +20,7 @@ def test_init_creates_cursor_marker_and_exports_agent_name(tmp_path):
     assert payload["agent_name"] == "review-agent"
 
 
-def test_run_codex_uses_headless_exec_and_marks_idle(tmp_path, monkeypatch):
+def test_run_gemini_uses_headless_mode_and_marks_idle(tmp_path, monkeypatch):
     captured = {}
 
     class FakeProcess:
@@ -38,24 +38,26 @@ def test_run_codex_uses_headless_exec_and_marks_idle(tmp_path, monkeypatch):
     monkeypatch.setattr(ce_wrapper_core, "_spawn_process", fake_spawn)
 
     exit_code = ce_wrapper_core.run_wrapper_command(
-        "codex",
+        "gemini",
         "run",
         cwd=tmp_path,
-        agent_name="builder-agent",
-        task="Implement parser",
+        agent_name="scout-agent",
+        task="Find all TODOs",
     )
     assert exit_code == 0
-    assert captured["command"][:4] == [
-        "codex",
-        "--cd",
+    assert captured["command"] == [
+        "gemini",
+        "--include-directories",
         str(tmp_path.resolve()),
-        "exec",
+        "--approval-mode",
+        "auto",
+        "-p",
+        "Find all TODOs",
     ]
-    assert captured["command"][4].startswith("Implement parser")
     assert captured["cwd"] == tmp_path.resolve()
-    assert captured["env"]["CE_AGENT_NAME"] == "builder-agent"
+    assert captured["env"]["CE_AGENT_NAME"] == "scout-agent"
 
-    marker = tmp_path / ".ce-codex-session"
+    marker = tmp_path / ".ce-gemini-session"
     payload = json.loads(marker.read_text(encoding="utf-8"))
     assert payload["status"] == "idle"
     assert payload["pid"] is None

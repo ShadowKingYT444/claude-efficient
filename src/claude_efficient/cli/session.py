@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import time
+from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
 
@@ -20,7 +21,14 @@ from claude_efficient.generators.prompt import normalize_prompt
 from claude_efficient.prompt.optimizer import OptimizedPrompt, optimize
 from claude_efficient.session.compact_manager import SessionScopeAnalyzer
 from claude_efficient.session.mcp_config import McpConfigAdvisor
+from claude_efficient.session.mcp_pruner import (
+    auto_pruned_session_config,
+    discover_enabled_servers,
+    is_auto_prune_enabled,
+    prune,
+)
 from claude_efficient.session.model_router import route
+from claude_efficient.session.output_budget import estimate_output_budget, format_budget_hint
 
 
 def _session_env() -> dict[str, str]:
@@ -138,6 +146,21 @@ def run(
             click.secho(f"[ce] WARNING Scope: {scope.warning}", fg="yellow")
             click.echo(f"[ce]   -> {scope.recommendation}")
 
+        # Output budget: inject token budget hint based on task type
+        try:
+            est = int(scope.estimated_tokens)
+            file_count = est // 4500 if est > 0 else 1
+        except (TypeError, ValueError):
+            file_count = 1
+        budget = estimate_output_budget(opt.text, max(file_count, 1))
+        budget_hint = format_budget_hint(budget)
+        opt = OptimizedPrompt(
+            text=opt.text + budget_hint,
+            chars_saved=opt.chars_saved,
+            warnings=opt.warnings,
+        )
+        click.echo(f"[ce] Output budget: ~{budget.estimated_tokens} tokens")
+
     routing_text = opt.text if opt.text else "Start interactive Claude Code session."
     decision = route(routing_text) if model is None else None
     chosen_model = model or decision.model
@@ -146,9 +169,12 @@ def run(
     if decision and decision.note:
         click.echo(f"[ce]   {decision.note}")
 
+    enabled_mcps: list[str] = []
+    fast_path = env.get("ENABLE_EXPERIMENTAL_MCP_CLI", "").lower() in ("1", "true")
+    mcp_session_ctx = nullcontext(None)
+
     if has_task:
         enabled_mcps = _read_enabled_mcps(root_path)
-        fast_path = env.get("ENABLE_EXPERIMENTAL_MCP_CLI", "").lower() in ("1", "true")
         mcp_invoke_fn = (
             None
             if mode is HelperMode.off
@@ -164,8 +190,23 @@ def run(
             plan = McpConfigAdvisor().plan_session(opt.text, mcp_result.relevant, root_path)
             for advice in plan.advice:
                 click.secho(f"[ce] MCP: {advice}", fg="cyan")
+        if enabled_mcps and not fast_path:
+            if dry_run:
+                preview = prune(opt.text, enabled_mcps, root=root_path)
+                if is_auto_prune_enabled(root_path) and preview.pruned:
+                    click.secho(
+                        "[ce] MCP auto-prune (dry-run): "
+                        f"keep={preview.keep}, prune={preview.pruned}",
+                        fg="cyan",
+                    )
+            else:
+                mcp_session_ctx = auto_pruned_session_config(
+                    opt.text,
+                    enabled_mcps,
+                    root=root_path,
+                )
 
-    brief = _fetch_mem_brief(opt.text) if has_task else None
+    brief = _fetch_mem_brief(opt.text, root=root_path) if has_task else None
     if brief:
         click.echo(f"[ce] Memory: {brief}")
 
@@ -207,70 +248,114 @@ def run(
     mode_label = "pipe" if pipe else "interactive"
     click.secho(f"\n[ce] Running on {chosen_model} ({mode_label})...\n", fg="cyan")
 
-    if pipe:
-        tel_cmd = cmd + ["--output-format", "json"]
-        t0 = time.monotonic()
-        proc = subprocess.run(
-            tel_cmd,
-            cwd=root_path,
-            env=env,
-            capture_output=True,
-            text=True,
-            shell=(sys.platform == "win32"),
-        )
-        duration = time.monotonic() - t0
+    with mcp_session_ctx as mcp_session:
+        if mcp_session and mcp_session.auto_prune_enabled:
+            if mcp_session.applied:
+                click.secho(
+                    "[ce] MCP auto-prune applied: "
+                    f"active={mcp_session.active_servers}, "
+                    f"pruned={mcp_session.result.pruned}",
+                    fg="cyan",
+                )
+            elif mcp_session.reason:
+                click.secho(f"[ce] MCP auto-prune skipped: {mcp_session.reason}", fg="yellow")
 
-        actual_input = actual_output = actual_cache = None
-        text_result = proc.stdout
-        try:
-            data = json.loads(proc.stdout)
-            text_result = data.get("result", proc.stdout)
-            usage = data.get("usage", {})
-            actual_input = usage.get("input_tokens")
-            actual_output = usage.get("output_tokens")
-            actual_cache = usage.get("cache_read_input_tokens")
-        except (json.JSONDecodeError, AttributeError, TypeError):
-            pass
-        if text_result:
-            click.echo(text_result)
+        if pipe:
+            tel_cmd = cmd + ["--output-format", "json"]
+            t0 = time.monotonic()
+            proc = subprocess.run(
+                tel_cmd,
+                cwd=root_path,
+                env=env,
+                capture_output=True,
+                text=True,
+                shell=(sys.platform == "win32"),
+            )
+            duration = time.monotonic() - t0
 
-        _write_telemetry(
-            root_path,
-            task_text,
-            opt,
-            mode="pipe",
-            model=chosen_model,
-            actual_input=actual_input,
-            actual_output=actual_output,
-            actual_cache=actual_cache,
-            duration=duration,
-        )
+            actual_input = actual_output = actual_cache = None
+            text_result = proc.stdout
+            try:
+                data = json.loads(proc.stdout)
+                text_result = data.get("result", proc.stdout)
+                usage = data.get("usage", {})
+                actual_input = usage.get("input_tokens")
+                actual_output = usage.get("output_tokens")
+                actual_cache = usage.get("cache_read_input_tokens")
+            except (json.JSONDecodeError, AttributeError, TypeError):
+                pass
+            if text_result:
+                click.echo(text_result)
 
-    else:
-        t0 = time.monotonic()
-        subprocess.run(cmd, cwd=root_path, env=env, shell=(sys.platform == "win32"))
-        duration = time.monotonic() - t0
-        _write_telemetry(
-            root_path,
-            task_text,
-            opt,
-            mode="interactive",
-            model=chosen_model,
-            duration=duration,
-        )
+            _write_telemetry(
+                root_path,
+                task_text,
+                opt,
+                mode="pipe",
+                model=chosen_model,
+                actual_input=actual_input,
+                actual_output=actual_output,
+                actual_cache=actual_cache,
+                duration=duration,
+            )
+
+        else:
+            t0 = time.monotonic()
+            subprocess.run(cmd, cwd=root_path, env=env, shell=(sys.platform == "win32"))
+            duration = time.monotonic() - t0
+
+            # Try to extract real token usage from Claude Code session data
+            actual_input = actual_output = actual_cache = None
+            try:
+                from claude_efficient.analysis.session_parser import parse_last_session
+                session_data = parse_last_session(root_path)
+                if session_data and session_data.total_input > 0:
+                    actual_input = session_data.total_input
+                    actual_output = session_data.total_output
+                    actual_cache = session_data.total_cache_read
+                    click.echo(
+                        f"[ce] Session: {session_data.turn_count} turns, "
+                        f"{actual_input:,} input, {actual_output:,} output, "
+                        f"{actual_cache:,} cached"
+                    )
+            except Exception:
+                pass
+
+            _write_telemetry(
+                root_path,
+                task_text,
+                opt,
+                mode="interactive",
+                model=chosen_model,
+                actual_input=actual_input,
+                actual_output=actual_output,
+                actual_cache=actual_cache,
+                duration=duration,
+            )
+
+            # Post-session analysis: warn about long sessions
+            if duration and duration > 600:
+                click.secho(
+                    "[ce] Long session detected. Consider splitting future tasks "
+                    "and using /clear between logical units.",
+                    fg="yellow",
+                )
 
 
 def _read_enabled_mcps(root: Path) -> list[str]:
     config_file = root / ".claude-efficient.toml"
     if not config_file.exists():
-        return []
+        return discover_enabled_servers(root)
     try:
         import tomllib
 
         with open(config_file, "rb") as f:
-            return tomllib.load(f).get("mcp", {}).get("enabled_servers", [])
+            configured = tomllib.load(f).get("mcp", {}).get("enabled_servers", [])
+            if isinstance(configured, list) and configured:
+                return [name for name in configured if isinstance(name, str)]
     except Exception:
-        return []
+        pass
+    return discover_enabled_servers(root)
 
 
 def _write_telemetry(
@@ -317,33 +402,109 @@ def _write_telemetry(
     click.secho("[ce] Telemetry saved -> .ce-telemetry.jsonl", fg="cyan")
 
 
-def _fetch_mem_brief(task: str, max_chars: int = 300) -> str | None:
+def _normalize_mem_text(value: str) -> str:
+    return " ".join(value.split())
+
+
+def _build_mem_queries(task: str, root: Path | None = None) -> list[str]:
+    import re
+
+    task = task.strip()
+    if not task:
+        return []
+
+    queries: list[str] = [task]
+    files = re.findall(
+        r"\b[\w./\\-]+\.(?:py|js|ts|tsx|jsx|go|rs|java|rb|toml|json|yaml|yml|sh|c|cpp|h)\b",
+        task,
+    )
+    if files:
+        queries.append(" ".join(files[:3]))
+
+    if root is not None:
+        repo_hint = f"{root.name} {task[:120]}".strip()
+        if repo_hint and repo_hint not in queries:
+            queries.append(repo_hint)
+
+    words = re.findall(r"[a-zA-Z][a-zA-Z0-9_/-]{3,}", task.lower())
+    stop = {
+        "this",
+        "that",
+        "with",
+        "from",
+        "into",
+        "have",
+        "make",
+        "build",
+        "update",
+        "implement",
+    }
+    keywords = [word for word in words if word not in stop][:8]
+    if keywords:
+        kw_query = " ".join(keywords)
+        if kw_query not in queries:
+            queries.append(kw_query)
+
+    return queries[:4]
+
+
+def _fetch_mem_brief(task: str, max_chars: int = 320, root: Path | None = None) -> str | None:
     """
-    Query claude-mem for relevant context from prior sessions.
-    Returns a compact brief string or None if unavailable or snippets are too thin.
+    Query claude-mem using multiple compact queries and return a merged brief.
+    Keeps output short to avoid regressing token cost while improving recall.
     """
+    queries = _build_mem_queries(task, root=root)
+    if not queries:
+        return None
+
     try:
         import requests
 
-        response = requests.post(
-            "http://localhost:37777/search",
-            json={"query": task, "limit": 3},
-            timeout=3,
-        )
-        if not response.ok:
+        ranked: list[tuple[float, str]] = []
+        seen: set[str] = set()
+
+        for query in queries:
+            response = requests.post(
+                "http://localhost:37777/search",
+                json={"query": query, "limit": 4},
+                timeout=3,
+            )
+            if not response.ok:
+                continue
+
+            for entry in response.json().get("results", []):
+                summary = _normalize_mem_text(str(entry.get("summary", "")))
+                if len(summary) < 25:
+                    continue
+                key = summary.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                score = float(
+                    entry.get("score")
+                    or entry.get("similarity")
+                    or entry.get("relevance")
+                    or 0.0
+                )
+                ranked.append((score, summary))
+
+        if not ranked:
             return None
-        results = response.json().get("results", [])
-        if not results:
-            return None
-        snippets = [
-            summary[:80]
-            for summary in (entry.get("summary", "") for entry in results[:3])
-            if len(summary) > 30
-        ]
-        if not snippets:
-            return None
-        brief = " | ".join(snippets)
-        return brief[:max_chars]
+
+        ranked.sort(key=lambda item: (item[0], len(item[1])), reverse=True)
+        parts: list[str] = []
+        used = 0
+        for _, summary in ranked[:5]:
+            snippet = summary[:100].rstrip()
+            if len(summary) > 100:
+                snippet += "..."
+            proposed = f"{' | ' if parts else ''}{snippet}"
+            if used + len(proposed) > max_chars:
+                break
+            parts.append(snippet)
+            used += len(proposed)
+
+        return " | ".join(parts) if parts else None
     except Exception:
         return None
 
